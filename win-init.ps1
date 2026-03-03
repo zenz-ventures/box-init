@@ -16,15 +16,6 @@ function Ensure-WingetPackage {
     }
 }
 
-function Ensure-GitHubAuth {
-    try {
-        gh auth status -h github.com | Out-Null
-    }
-    catch {
-        gh auth login
-    }
-}
-
 function Ensure-Repo {
     param(
         [string]$Repo,
@@ -37,8 +28,10 @@ function Ensure-Repo {
         New-Item -ItemType Directory -Force -Path $repoRoot | Out-Null
     }
 
+    $repoUrl = "https://github.com/$Repo.git"
+
     if (-not (Test-Path $Destination)) {
-        gh repo clone $Repo $Destination
+        git clone $repoUrl $Destination
         return
     }
 
@@ -65,12 +58,7 @@ if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
 # --- Ensure tools ---
 
 Ensure-WingetPackage "git"  "Git.Git"
-Ensure-WingetPackage "gh"   "GitHub.cli"
 Ensure-WingetPackage "pwsh" "Microsoft.PowerShell"
-
-# --- Ensure authentication ---
-
-Ensure-GitHubAuth
 
 # --- Ensure private repo ---
 

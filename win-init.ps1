@@ -41,8 +41,9 @@ function Ensure-Repo {
 
     Push-Location $Destination
     try {
-        git fetch --all --prune | Out-Null
-        git pull | Out-Null
+        $current = (git rev-parse --abbrev-ref HEAD).Trim()
+        git fetch origin | Out-Null
+        git pull origin $current | Out-Null
     }
     finally {
         Pop-Location

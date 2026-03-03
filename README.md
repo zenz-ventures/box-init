@@ -6,7 +6,6 @@ Public initialization bootstrap for my development environment. Installs the min
 
 Installs:
 - Git
-- GitHub CLI
 - PowerShell 7
 
 ```

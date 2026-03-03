@@ -1,12 +1,8 @@
 # box-init
 
-Public initialization bootstrap for my development environment. Installs the minimum prerequisites, then clones my private `box-setup` repository and prints next steps.
+Public initialization bootstrap for my development environment. Installs cross-platform PowerShell 7.
 
 ## Windows
-
-Installs:
-- Git
-- PowerShell 7
 
 ```
 Set-ExecutionPolicy -Scope Process Bypass -Force;

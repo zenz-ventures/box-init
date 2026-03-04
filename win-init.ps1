@@ -119,6 +119,11 @@ function Get-InstalledExecutablePath {
 Appends a path entry to the current process PATH for immediate use.
 #>
 function Append-ProcessPath {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute(
+        'PSUseApprovedVerbs',
+        '',
+        Justification = 'Append precisely describes this internal helper.'
+    )]
     param([string]$Path)
 
     if (-not (Test-Path $Path)) {
@@ -139,6 +144,11 @@ function Append-ProcessPath {
 Adds a path entry to the persisted user Path variable when needed.
 #>
 function Append-UserPath {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute(
+        'PSUseApprovedVerbs',
+        '',
+        Justification = 'Append precisely describes this internal helper.'
+    )]
     param([string]$Path)
 
     if (-not (Test-Path $Path)) {
@@ -262,6 +272,11 @@ function Initialize-Git {
 Clones the target repo when it does not already exist locally.
 #>
 function Clone-Repo {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute(
+        'PSUseApprovedVerbs',
+        '',
+        Justification = 'Clone matches the underlying git operation for this internal helper.'
+    )]
     param(
         [string]$Repo,
         [string]$Destination

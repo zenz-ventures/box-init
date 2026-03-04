@@ -291,7 +291,7 @@ Initialize-PowerShell7
 Initialize-Git
 Clone-Repo -Repo $Repo -Destination $Destination
 
-$bootstrap = Join-Path $Destination "common\bootstrap.ps1"
+$bootstrap = Join-Path $Destination "bootstrap.ps1"
 
 Write-Host ""
 Write-Host "Next steps (PowerShell 7):" -ForegroundColor Green
@@ -300,3 +300,4 @@ Write-Host "1) Open a NEW PowerShell 7 shell (run: pwsh)" -ForegroundColor Green
 Write-Host "2) Run:" -ForegroundColor Green
 Write-Host ("   pwsh -NoProfile -ExecutionPolicy Bypass -File `"{0}`"" -f $bootstrap) -ForegroundColor Green
 Write-Host ""
+

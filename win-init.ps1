@@ -4,69 +4,67 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$script:PerformedActions = [System.Collections.Generic.List[string]]::new()
-$script:SkippedActions = [System.Collections.Generic.List[string]]::new()
+$script:BootstrapIntentions = [System.Collections.Generic.List[string]]::new()
+$script:BootstrapSkipped = [System.Collections.Generic.List[string]]::new()
+$script:BootstrapPerformed = [System.Collections.Generic.List[string]]::new()
 
-<#
-.SYNOPSIS
-Writes the current step and the work the script is about to attempt.
-#>
-function Write-StepHeader {
+function Add-BootstrapListItem {
     param(
-        [string]$Title,
-        [string]$Intent
-    )
+        [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
+        [System.Collections.Generic.List[string]]$List,
 
-    Write-Host ""
-    Write-Host $Title -ForegroundColor Cyan
-    Write-Host ("Trying: {0}" -f $Intent) -ForegroundColor DarkGray
-}
-
-<#
-.SYNOPSIS
-Writes an action or skip outcome and records it for the final summary.
-#>
-function Write-StepOutcome {
-    param(
-        [ValidateSet('Did', 'Skipped')]
-        [string]$Kind,
-
+        [Parameter(Mandatory)]
         [string]$Message
     )
 
-    switch ($Kind) {
-        'Did' {
-            $script:PerformedActions.Add($Message)
-            Write-Host ("Did: {0}" -f $Message) -ForegroundColor Green
-        }
-        'Skipped' {
-            $script:SkippedActions.Add($Message)
-            Write-Host ("Didn't need to: {0}" -f $Message) -ForegroundColor DarkYellow
-        }
+    if (-not [string]::IsNullOrWhiteSpace($Message) -and -not $List.Contains($Message)) {
+        [void]$List.Add($Message)
     }
 }
 
-<#
-.SYNOPSIS
-Prints a final summary of changes and skipped work.
-#>
-function Write-RunSummary {
-    Write-Host ""
-    Write-Host "Summary" -ForegroundColor Cyan
+function Add-BootstrapIntent {
+    param([Parameter(Mandatory)][string]$Message)
 
-    if ($script:PerformedActions.Count -eq 0) {
-        Write-Host "Did: no changes were required." -ForegroundColor Green
+    Add-BootstrapListItem -List $script:BootstrapIntentions -Message $Message
+}
+
+function Add-BootstrapSkipped {
+    param([Parameter(Mandatory)][string]$Message)
+
+    Add-BootstrapListItem -List $script:BootstrapSkipped -Message $Message
+}
+
+function Add-BootstrapPerformed {
+    param([Parameter(Mandatory)][string]$Message)
+
+    Add-BootstrapListItem -List $script:BootstrapPerformed -Message $Message
+}
+
+function Show-BootstrapSummary {
+    Write-Host ""
+    Write-Host "Bootstrap summary:" -ForegroundColor Cyan
+
+    Write-Host "Planned:" -ForegroundColor Cyan
+    foreach ($item in $script:BootstrapIntentions) {
+        Write-Host "  - $item"
+    }
+
+    if ($script:BootstrapSkipped.Count -gt 0) {
+        Write-Host "Not needed:" -ForegroundColor Yellow
+        foreach ($item in $script:BootstrapSkipped) {
+            Write-Host "  - $item"
+        }
+    }
+
+    Write-Host "Performed:" -ForegroundColor Green
+    if ($script:BootstrapPerformed.Count -gt 0) {
+        foreach ($item in $script:BootstrapPerformed) {
+            Write-Host "  - $item"
+        }
     }
     else {
-        foreach ($message in $script:PerformedActions) {
-            Write-Host ("Did: {0}" -f $message) -ForegroundColor Green
-        }
-    }
-
-    if ($script:SkippedActions.Count -gt 0) {
-        foreach ($message in $script:SkippedActions) {
-            Write-Host ("Didn't need to: {0}" -f $message) -ForegroundColor DarkYellow
-        }
+        Write-Host "  - No changes were required."
     }
 }
 
@@ -192,26 +190,17 @@ function Append-ProcessPath {
     param([string]$Path)
 
     if (-not (Test-Path $Path)) {
-        return [pscustomobject]@{
-            Changed = $false
-            Message = "add '$Path' to the process PATH because that directory does not exist."
-        }
+        return $false
     }
 
     $processPath = [Environment]::GetEnvironmentVariable("Path", "Process")
 
     if (Test-PathEntryExists -PathValue $processPath -Path $Path) {
-        return [pscustomobject]@{
-            Changed = $false
-            Message = "add '$Path' to the process PATH because it is already present."
-        }
+        return $false
     }
 
     $env:Path = "$processPath;$Path"
-    return [pscustomobject]@{
-        Changed = $true
-        Message = "added '$Path' to the process PATH for this session."
-    }
+    return $true
 }
 
 <#
@@ -227,10 +216,7 @@ function Append-UserPath {
     param([string]$Path)
 
     if (-not (Test-Path $Path)) {
-        return [pscustomobject]@{
-            Changed = $false
-            Message = "add '$Path' to the user PATH because that directory does not exist."
-        }
+        return $false
     }
 
     $machinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
@@ -238,10 +224,7 @@ function Append-UserPath {
 
     if ((Test-PathEntryExists -PathValue $machinePath -Path $Path) -or
         (Test-PathEntryExists -PathValue $userPath -Path $Path)) {
-        return [pscustomobject]@{
-            Changed = $false
-            Message = "add '$Path' to the user PATH because it is already present."
-        }
+        return $false
     }
 
     $newUserPath = if ([string]::IsNullOrWhiteSpace($userPath)) {
@@ -252,10 +235,7 @@ function Append-UserPath {
     }
 
     [Environment]::SetEnvironmentVariable("Path", $newUserPath, "User")
-    return [pscustomobject]@{
-        Changed = $true
-        Message = "added '$Path' to the persisted user PATH."
-    }
+    return $true
 }
 
 <#
@@ -269,6 +249,8 @@ function Install-WingetPackage {
         throw "winget not found. Install 'App Installer' from Microsoft Store and re-run."
     }
 
+    Write-Host "Installing $WingetId with winget..."
+
     Invoke-NativeCommand `
         -ScriptBlock {
             & winget install --id $WingetId -e --source winget --accept-package-agreements --accept-source-agreements | Out-Null
@@ -281,9 +263,7 @@ function Install-WingetPackage {
 Finds or installs PowerShell 7 and makes pwsh available.
 #>
 function Initialize-PowerShell7 {
-    Write-StepHeader `
-        -Title "PowerShell 7" `
-        -Intent "check whether PowerShell 7 is installed and make 'pwsh' available in this session."
+    Add-BootstrapIntent "Ensure PowerShell 7 is installed and available in this session."
 
     $pwshPath = Get-InstalledExecutablePath -Command "pwsh" -CandidatePaths @(
         "C:\Program Files\PowerShell\7\pwsh.exe",
@@ -294,7 +274,7 @@ function Initialize-PowerShell7 {
 
     if (-not $pwshPath) {
         Install-WingetPackage "Microsoft.PowerShell"
-        Write-StepOutcome -Kind Did -Message "installed PowerShell 7 with winget (Microsoft.PowerShell)."
+        Add-BootstrapPerformed "Installed PowerShell 7 with winget."
 
         $pwshPath = Get-InstalledExecutablePath -Command "pwsh" -CandidatePaths @(
             "C:\Program Files\PowerShell\7\pwsh.exe",
@@ -304,7 +284,7 @@ function Initialize-PowerShell7 {
         )
     }
     else {
-        Write-StepOutcome -Kind Skipped -Message "install PowerShell 7 because 'pwsh' was already found at '$pwshPath'."
+        Add-BootstrapSkipped "PowerShell 7 was already installed."
     }
 
     if (-not $pwshPath) {
@@ -312,17 +292,26 @@ function Initialize-PowerShell7 {
     }
 
     $pwshDir = Split-Path $pwshPath -Parent
-    $userPathResult = Append-UserPath $pwshDir
-    Write-StepOutcome -Kind $(if ($userPathResult.Changed) { 'Did' } else { 'Skipped' }) -Message $userPathResult.Message
 
-    $processPathResult = Append-ProcessPath $pwshDir
-    Write-StepOutcome -Kind $(if ($processPathResult.Changed) { 'Did' } else { 'Skipped' }) -Message $processPathResult.Message
+    if (Append-UserPath $pwshDir) {
+        Add-BootstrapPerformed "Added PowerShell 7 to the persisted user PATH."
+    }
+    else {
+        Add-BootstrapSkipped "PowerShell 7 was already present in the persisted user PATH."
+    }
+
+    if (Append-ProcessPath $pwshDir) {
+        Add-BootstrapPerformed "Added PowerShell 7 to the process PATH for this session."
+    }
+    else {
+        Add-BootstrapSkipped "PowerShell 7 was already present in the process PATH for this session."
+    }
 
     if (-not (Get-Command pwsh -ErrorAction SilentlyContinue)) {
         throw "pwsh is installed but not available in this session. Open a new terminal and run again."
     }
 
-    Write-StepOutcome -Kind Skipped -Message "open a new terminal before using 'pwsh'; it is already available in this session."
+    Add-BootstrapSkipped "A new terminal was not required to use pwsh in this session."
 }
 
 <#
@@ -330,9 +319,7 @@ function Initialize-PowerShell7 {
 Finds or installs Git and makes git available.
 #>
 function Initialize-Git {
-    Write-StepHeader `
-        -Title "Git" `
-        -Intent "check whether Git is installed and make 'git' available in this session."
+    Add-BootstrapIntent "Ensure Git is installed and available in this session."
 
     $gitPath = Get-InstalledExecutablePath -Command "git" -CandidatePaths @(
         "C:\Program Files\Git\cmd\git.exe",
@@ -345,7 +332,7 @@ function Initialize-Git {
 
     if (-not $gitPath) {
         Install-WingetPackage "Git.Git"
-        Write-StepOutcome -Kind Did -Message "installed Git with winget (Git.Git)."
+        Add-BootstrapPerformed "Installed Git with winget."
 
         $gitPath = Get-InstalledExecutablePath -Command "git" -CandidatePaths @(
             "C:\Program Files\Git\cmd\git.exe",
@@ -357,7 +344,7 @@ function Initialize-Git {
         )
     }
     else {
-        Write-StepOutcome -Kind Skipped -Message "install Git because 'git' was already found at '$gitPath'."
+        Add-BootstrapSkipped "Git was already installed."
     }
 
     if (-not $gitPath) {
@@ -365,17 +352,26 @@ function Initialize-Git {
     }
 
     $gitDir = Split-Path $gitPath -Parent
-    $userPathResult = Append-UserPath $gitDir
-    Write-StepOutcome -Kind $(if ($userPathResult.Changed) { 'Did' } else { 'Skipped' }) -Message $userPathResult.Message
 
-    $processPathResult = Append-ProcessPath $gitDir
-    Write-StepOutcome -Kind $(if ($processPathResult.Changed) { 'Did' } else { 'Skipped' }) -Message $processPathResult.Message
+    if (Append-UserPath $gitDir) {
+        Add-BootstrapPerformed "Added Git to the persisted user PATH."
+    }
+    else {
+        Add-BootstrapSkipped "Git was already present in the persisted user PATH."
+    }
+
+    if (Append-ProcessPath $gitDir) {
+        Add-BootstrapPerformed "Added Git to the process PATH for this session."
+    }
+    else {
+        Add-BootstrapSkipped "Git was already present in the process PATH for this session."
+    }
 
     if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
         throw "git is installed but not available in this session. Open a new terminal and run again."
     }
 
-    Write-StepOutcome -Kind Skipped -Message "open a new terminal before using 'git'; it is already available in this session."
+    Add-BootstrapSkipped "A new terminal was not required to use git in this session."
 }
 
 <#
@@ -393,27 +389,28 @@ function Clone-Repo {
         [string]$Destination
     )
 
-    Write-StepHeader `
-        -Title "Repository" `
-        -Intent ("ensure '{0}' is cloned at '{1}'." -f $Repo, $Destination)
+    Add-BootstrapIntent ("Ensure '{0}' is cloned at '{1}'." -f $Repo, $Destination)
 
     $repoRoot = Split-Path $Destination -Parent
 
     if ($repoRoot -and -not (Test-Path $repoRoot)) {
         New-Item -ItemType Directory -Force -Path $repoRoot | Out-Null
-        Write-StepOutcome -Kind Did -Message ("created the parent directory '{0}'." -f $repoRoot)
+        Add-BootstrapPerformed ("Created the parent directory '{0}'." -f $repoRoot)
     }
     elseif ($repoRoot) {
-        Write-StepOutcome -Kind Skipped -Message ("create the parent directory '{0}' because it already exists." -f $repoRoot)
+        Add-BootstrapSkipped ("The parent directory '{0}' already existed." -f $repoRoot)
     }
 
     $repoUrl = "https://github.com/$Repo.git"
 
     if (-not (Test-Path $Destination)) {
+        Write-Host "Cloning $repoUrl into $Destination..."
+
         Invoke-NativeCommand `
             -ScriptBlock { & git clone $repoUrl $Destination } `
             -ErrorMessage "Failed to clone $repoUrl."
-        Write-StepOutcome -Kind Did -Message ("cloned '{0}' into '{1}'." -f $repoUrl, $Destination)
+
+        Add-BootstrapPerformed ("Cloned '{0}' into '{1}'." -f $repoUrl, $Destination)
         return
     }
 
@@ -421,13 +418,15 @@ function Clone-Repo {
         throw "Destination exists but is not a git repo: $Destination"
     }
 
-    Write-StepOutcome -Kind Skipped -Message ("clone '{0}' because the repository already exists at '{1}'." -f $repoUrl, $Destination)
+    Add-BootstrapSkipped ("The repository '{0}' was already cloned at '{1}'." -f $Repo, $Destination)
 }
+
+Write-Host "Initializing bootstrap prerequisites..."
 
 Initialize-PowerShell7
 Initialize-Git
 Clone-Repo -Repo $Repo -Destination $Destination
-Write-RunSummary
+Show-BootstrapSummary
 
 $bootstrap = Join-Path $Destination "bootstrap.ps1"
 

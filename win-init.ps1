@@ -5,6 +5,10 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+<#
+.SYNOPSIS
+Runs a native command and throws when it returns a non-zero exit code.
+#>
 function Invoke-NativeCommand {
     param(
         [Parameter(Mandatory)]
@@ -21,31 +25,153 @@ function Invoke-NativeCommand {
     }
 }
 
-function Add-DirectoryToPath {
-    param([string]$Directory)
+<#
+.SYNOPSIS
+Checks whether a PATH-style value already contains an exact path entry.
+#>
+function Test-PathEntryExists {
+    param(
+        [string]$PathValue,
+        [string]$Path
+    )
 
-    if (-not (Test-Path $Directory)) {
+    if ([string]::IsNullOrWhiteSpace($PathValue) -or [string]::IsNullOrWhiteSpace($Path)) {
+        return $false
+    }
+
+    $normalizedPath = $Path.Trim().TrimEnd('\\')
+
+    foreach ($entry in ($PathValue -split ';')) {
+        $normalizedEntry = $entry.Trim().TrimEnd('\\')
+
+        if (-not $normalizedEntry) {
+            continue
+        }
+
+        if ($normalizedEntry.Equals($normalizedPath, [System.StringComparison]::OrdinalIgnoreCase)) {
+            return $true
+        }
+    }
+
+    return $false
+}
+
+<#
+.SYNOPSIS
+Looks up an executable registered through Windows App Paths.
+#>
+function Get-AppPathExecutable {
+    param([string]$Command)
+
+    $registryPaths = @(
+        "HKCU:\Software\Microsoft\Windows\CurrentVersion\App Paths\$Command.exe",
+        "HKLM:\Software\Microsoft\Windows\CurrentVersion\App Paths\$Command.exe"
+    )
+
+    foreach ($registryPath in $registryPaths) {
+        if (-not (Test-Path $registryPath)) {
+            continue
+        }
+
+        $item = Get-Item $registryPath
+        $executablePath = $item.GetValue('')
+
+        if ($executablePath -and (Test-Path $executablePath)) {
+            return (Resolve-Path $executablePath).Path
+        }
+    }
+
+    return $null
+}
+
+<#
+.SYNOPSIS
+Finds an installed executable from PATH, App Paths, or known install locations.
+#>
+function Get-InstalledExecutablePath {
+    param(
+        [string]$Command,
+        [string[]]$CandidatePaths
+    )
+
+    $commandInfo = Get-Command $Command -ErrorAction SilentlyContinue
+
+    if ($commandInfo -and $commandInfo.Source -and (Test-Path $commandInfo.Source)) {
+        return (Resolve-Path $commandInfo.Source).Path
+    }
+
+    $appPathExecutable = Get-AppPathExecutable -Command $Command
+    if ($appPathExecutable) {
+        return $appPathExecutable
+    }
+
+    foreach ($candidatePath in $CandidatePaths) {
+        if (Test-Path $candidatePath) {
+            return (Resolve-Path $candidatePath).Path
+        }
+    }
+
+    return $null
+}
+
+<#
+.SYNOPSIS
+Appends a path entry to the current process PATH for immediate use.
+#>
+function Append-ProcessPath {
+    param([string]$Path)
+
+    if (-not (Test-Path $Path)) {
         return
     }
 
     $processPath = [Environment]::GetEnvironmentVariable("Path", "Process")
-    $segments = $processPath -split ';' | Where-Object { $_ }
 
-    if ($segments -contains $Directory) {
+    if (Test-PathEntryExists -PathValue $processPath -Path $Path) {
         return
     }
 
-    $env:Path = "$Directory;$processPath"
+    $env:Path = "$processPath;$Path"
 }
 
-function Ensure-WingetPackage {
-    param(
-        [string]$Command,
-        [string]$WingetId
-    )
+<#
+.SYNOPSIS
+Adds a path entry to the persisted user Path variable when needed.
+#>
+function Append-UserPath {
+    param([string]$Path)
 
-    if (Get-Command $Command -ErrorAction SilentlyContinue) {
+    if (-not (Test-Path $Path)) {
         return
+    }
+
+    $machinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
+    $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+
+    if ((Test-PathEntryExists -PathValue $machinePath -Path $Path) -or
+        (Test-PathEntryExists -PathValue $userPath -Path $Path)) {
+        return
+    }
+
+    $newUserPath = if ([string]::IsNullOrWhiteSpace($userPath)) {
+        $Path
+    }
+    else {
+        "$userPath;$Path"
+    }
+
+    [Environment]::SetEnvironmentVariable("Path", $newUserPath, "User")
+}
+
+<#
+.SYNOPSIS
+Installs a package with winget.
+#>
+function Install-WingetPackage {
+    param([string]$WingetId)
+
+    if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+        throw "winget not found. Install 'App Installer' from Microsoft Store and re-run."
     }
 
     Invoke-NativeCommand `
@@ -55,32 +181,87 @@ function Ensure-WingetPackage {
         -ErrorMessage "Failed to install $WingetId with winget."
 }
 
-function Ensure-PwshOnPath {
-    if (Get-Command pwsh -ErrorAction SilentlyContinue) {
-        return
+<#
+.SYNOPSIS
+Finds or installs PowerShell 7 and makes pwsh available.
+#>
+function Initialize-PowerShell7 {
+    $pwshPath = Get-InstalledExecutablePath -Command "pwsh" -CandidatePaths @(
+        "C:\Program Files\PowerShell\7\pwsh.exe",
+        "C:\Program Files (x86)\PowerShell\7\pwsh.exe",
+        "$env:LOCALAPPDATA\Programs\PowerShell\7\pwsh.exe",
+        "$env:LOCALAPPDATA\Microsoft\powershell\pwsh.exe"
+    )
+
+    if (-not $pwshPath) {
+        Install-WingetPackage "Microsoft.PowerShell"
+
+        $pwshPath = Get-InstalledExecutablePath -Command "pwsh" -CandidatePaths @(
+            "C:\Program Files\PowerShell\7\pwsh.exe",
+            "C:\Program Files (x86)\PowerShell\7\pwsh.exe",
+            "$env:LOCALAPPDATA\Programs\PowerShell\7\pwsh.exe",
+            "$env:LOCALAPPDATA\Microsoft\powershell\pwsh.exe"
+        )
     }
 
-    Add-DirectoryToPath "C:\Program Files\PowerShell\7"
+    if (-not $pwshPath) {
+        throw "PowerShell 7 was not found after installation."
+    }
+
+    $pwshDir = Split-Path $pwshPath -Parent
+    Append-UserPath $pwshDir
+    Append-ProcessPath $pwshDir
 
     if (-not (Get-Command pwsh -ErrorAction SilentlyContinue)) {
         throw "pwsh is installed but not available in this session. Open a new terminal and run again."
     }
 }
 
-function Ensure-GitOnPath {
-    if (Get-Command git -ErrorAction SilentlyContinue) {
-        return
+<#
+.SYNOPSIS
+Finds or installs Git and makes git available.
+#>
+function Initialize-Git {
+    $gitPath = Get-InstalledExecutablePath -Command "git" -CandidatePaths @(
+        "C:\Program Files\Git\cmd\git.exe",
+        "C:\Program Files\Git\bin\git.exe",
+        "C:\Program Files (x86)\Git\cmd\git.exe",
+        "C:\Program Files (x86)\Git\bin\git.exe",
+        "$env:LOCALAPPDATA\Programs\Git\cmd\git.exe",
+        "$env:LOCALAPPDATA\Programs\Git\bin\git.exe"
+    )
+
+    if (-not $gitPath) {
+        Install-WingetPackage "Git.Git"
+
+        $gitPath = Get-InstalledExecutablePath -Command "git" -CandidatePaths @(
+            "C:\Program Files\Git\cmd\git.exe",
+            "C:\Program Files\Git\bin\git.exe",
+            "C:\Program Files (x86)\Git\cmd\git.exe",
+            "C:\Program Files (x86)\Git\bin\git.exe",
+            "$env:LOCALAPPDATA\Programs\Git\cmd\git.exe",
+            "$env:LOCALAPPDATA\Programs\Git\bin\git.exe"
+        )
     }
 
-    Add-DirectoryToPath "C:\Program Files\Git\cmd"
-    Add-DirectoryToPath "C:\Program Files\Git\bin"
+    if (-not $gitPath) {
+        throw "Git was not found after installation."
+    }
+
+    $gitDir = Split-Path $gitPath -Parent
+    Append-UserPath $gitDir
+    Append-ProcessPath $gitDir
 
     if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
         throw "git is installed but not available in this session. Open a new terminal and run again."
     }
 }
 
-function Ensure-Repo {
+<#
+.SYNOPSIS
+Clones the target repo when it does not already exist locally.
+#>
+function Clone-Repo {
     param(
         [string]$Repo,
         [string]$Destination
@@ -104,37 +285,11 @@ function Ensure-Repo {
     if (-not (Test-Path (Join-Path $Destination ".git"))) {
         throw "Destination exists but is not a git repo: $Destination"
     }
-
-    Push-Location $Destination
-    try {
-        $current = (& git branch --show-current).Trim()
-
-        if (-not $current) {
-            throw "Destination repo is not on a local branch: $Destination"
-        }
-
-        Invoke-NativeCommand `
-            -ScriptBlock { & git fetch origin | Out-Null } `
-            -ErrorMessage "Failed to fetch updates for $Repo."
-
-        Invoke-NativeCommand `
-            -ScriptBlock { & git pull origin $current | Out-Null } `
-            -ErrorMessage "Failed to update $Destination from origin/$current."
-    }
-    finally {
-        Pop-Location
-    }
 }
 
-if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
-    throw "winget not found. Install 'App Installer' from Microsoft Store and re-run."
-}
-
-Ensure-WingetPackage "pwsh" "Microsoft.PowerShell"
-Ensure-PwshOnPath
-Ensure-WingetPackage "git" "Git.Git"
-Ensure-GitOnPath
-Ensure-Repo -Repo $Repo -Destination $Destination
+Initialize-PowerShell7
+Initialize-Git
+Clone-Repo -Repo $Repo -Destination $Destination
 
 $bootstrap = Join-Path $Destination "common\bootstrap.ps1"
 

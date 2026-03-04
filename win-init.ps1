@@ -1,6 +1,6 @@
 param(
     [string]$Repo = "zenz-ventures/box-setup",
-    [string]$Destination = "C:\repos\box-setup"
+    [string]$Destination = (Join-Path $HOME "repos\box-setup")
 )
 
 $ErrorActionPreference = 'Stop'

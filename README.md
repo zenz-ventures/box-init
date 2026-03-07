@@ -16,13 +16,7 @@ Public OS-specific scripts that install and configure the essentials needed to b
 - Verifies GitHub SSH access (you add the key when prompted)
 - Clones `zenz-ventures/box-setup` into `~/repos/box-setup` and hands off to its setup script
 
-Run it in a bash shell (e.g. in WSL):
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/zenz-ventures/box-init/main/linux-init.sh | bash
-```
-
-Or download and run:
+Run it in a bash shell (e.g. in WSL). Use the download-then-run method so the script can prompt for git identity and GitHub key:
 
 ```bash
 curl -fsSL -o linux-init.sh https://raw.githubusercontent.com/zenz-ventures/box-init/main/linux-init.sh

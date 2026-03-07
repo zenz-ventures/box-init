@@ -47,6 +47,16 @@ ensure_sudo() {
   fi
 }
 
+ensure_interactive() {
+  if [ ! -t 0 ]; then
+    echo "This script needs an interactive terminal (it prompts for git identity and GitHub key)."
+    echo "Download and run it instead of piping from curl:"
+    echo "  curl -fsSL -o linux-init.sh https://raw.githubusercontent.com/zenz-ventures/box-init/main/linux-init.sh"
+    echo "  bash linux-init.sh"
+    exit 1
+  fi
+}
+
 install_prerequisites() {
   add_planned "Install prerequisites (git, curl, ca-certificates, openssh-client)."
 
@@ -211,6 +221,7 @@ clone_and_handoff() {
 main() {
   echo "Initializing Linux environment..."
 
+  ensure_interactive
   ensure_sudo
   install_prerequisites
   configure_git_identity

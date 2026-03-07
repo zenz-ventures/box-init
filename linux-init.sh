@@ -177,7 +177,9 @@ wait_for_github_access() {
 
   while true; do
     read -r -p "Press Enter after adding the key to GitHub... "
-    if ssh -T git@github.com 2>&1 | grep -q "successfully authenticated"; then
+    local output
+    output=$(ssh -T git@github.com 2>&1) || true
+    if echo "$output" | grep -q "successfully authenticated"; then
       log "GitHub SSH access confirmed"
       add_performed "Verified GitHub SSH access."
       return

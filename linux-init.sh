@@ -198,7 +198,7 @@ clone_and_handoff() {
   printf "\n\033[32mInit complete.\033[0m\n"
   show_summary
 
-  local setup_script="$repo_dir/wsl/setup.sh"
+  local setup_script="$repo_dir/linux/setup.sh"
   if [ ! -f "$setup_script" ]; then
     echo "Error: setup script not found at $setup_script"
     exit 1

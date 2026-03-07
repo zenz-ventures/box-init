@@ -1,18 +1,43 @@
 # box-init
 
-Public OS-specific shell scripts that install and configure only the essential tools needed to run the cross-platform PowerShell 7 development environment bootstrapping script: `https://github.com/zenz-ventures/box-setup`.
+Public OS-specific scripts that install and configure the essentials needed to bootstrap a development environment using [zenz-ventures/box-setup](https://github.com/zenz-ventures/box-setup).
+
+**Preferred:** Use the Linux init script (WSL or native Debian/Ubuntu). **Alternative:** Use the PowerShell init script on Windows to run the PowerShell-based box-setup flow.
 
 ## What these scripts do
 
-### Windows
+### Linux (preferred)
 
-`win-init.ps1`:
+`linux-init.sh` — use on WSL or native Debian/Ubuntu:
+
+- Installs prerequisites (git, curl, ca-certificates, openssh-client)
+- Configures git identity (user.name, user.email)
+- Generates an SSH key and configures it for GitHub
+- Verifies GitHub SSH access (you add the key when prompted)
+- Clones `zenz-ventures/box-setup` into `~/repos/box-setup` and hands off to its setup script
+
+Run it in a bash shell (e.g. in WSL):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/zenz-ventures/box-init/main/linux-init.sh | bash
+```
+
+Or download and run:
+
+```bash
+curl -fsSL -o linux-init.sh https://raw.githubusercontent.com/zenz-ventures/box-init/main/linux-init.sh
+bash linux-init.sh
+```
+
+### Windows (alternative — PowerShell)
+
+`win-init.ps1` — alternative flow using PowerShell 7 and the box-setup PowerShell bootstrap:
 
 - Ensures PowerShell 7 is installed and available in the current session
 - Ensures Git is installed and available in the current session
 - Clones `zenz-ventures/box-setup` into `~/repos/box-setup` if it is not already present
 - Prints a short action summary
-- Prints the PowerShell 7 command to run `bootstrap.ps1` from the private repo
+- Prints the PowerShell 7 command to run `bootstrap.ps1` from the repo
 
 Run it from Windows PowerShell:
 

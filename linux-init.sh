@@ -223,6 +223,7 @@ clone_and_handoff() {
 main() {
   echo "Initializing Linux environment..."
 
+  cd "$HOME" || exit 1
   ensure_interactive
   ensure_sudo
   install_prerequisites

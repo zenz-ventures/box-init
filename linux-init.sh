@@ -130,7 +130,9 @@ setup_ssh_key() {
   add_planned "Generate an SSH key for GitHub."
 
   mkdir -p "$HOME/.ssh"
-  chmod 700 "$HOME/.ssh"
+  if [ -O "$HOME/.ssh" ]; then
+    chmod 700 "$HOME/.ssh"
+  fi
 
   if [ -f "$HOME/.ssh/id_ed25519" ]; then
     log "SSH key already exists at ~/.ssh/id_ed25519"

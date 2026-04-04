@@ -57,6 +57,32 @@ ensure_interactive() {
   fi
 }
 
+ensure_ssh_dir_access() {
+  local ssh_dir="$HOME/.ssh"
+  local user_name group_name
+  user_name="$(id -un)"
+  group_name="$(id -gn)"
+
+  mkdir -p "$ssh_dir"
+
+  if [ ! -w "$ssh_dir" ] || [ ! -O "$ssh_dir" ]; then
+    add_planned "Ensure ~/.ssh is owned and writable by the current user."
+    log "Repairing ~/.ssh ownership/permissions"
+    ensure_sudo
+    sudo mkdir -p "$ssh_dir"
+    sudo chown "$user_name:$group_name" "$ssh_dir"
+    add_performed "Repaired ~/.ssh ownership/permissions."
+  fi
+
+  chmod 700 "$ssh_dir"
+
+  if [ ! -w "$ssh_dir" ] || [ ! -O "$ssh_dir" ]; then
+    echo "Unable to write to $ssh_dir as user $user_name."
+    echo "Check ownership and mount permissions, then rerun."
+    exit 1
+  fi
+}
+
 install_prerequisites() {
   add_planned "Install prerequisites (git, curl, ca-certificates, openssh-client)."
 
@@ -129,10 +155,7 @@ configure_git_identity() {
 setup_ssh_key() {
   add_planned "Generate an SSH key for GitHub."
 
-  mkdir -p "$HOME/.ssh"
-  if [ -O "$HOME/.ssh" ]; then
-    chmod 700 "$HOME/.ssh"
-  fi
+  ensure_ssh_dir_access
 
   if [ -f "$HOME/.ssh/id_ed25519" ]; then
     log "SSH key already exists at ~/.ssh/id_ed25519"
